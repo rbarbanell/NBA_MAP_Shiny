@@ -1,0 +1,13 @@
+name: NBAMap
+title: NBAMap
+username:
+account: rbarbanell
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8879661
+bundleId: 7102164
+url: https://rbarbanell.shinyapps.io/NBAMap/
+when: 1681783034.37504
+lastSyncTime: 1681783034.37505
+asMultiple: FALSE
+asStatic: FALSE

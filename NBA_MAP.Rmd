@@ -1,0 +1,244 @@
+---
+title: "NBA_Shiny"
+author: "Rebecca Barbanell"
+date: "`r Sys.Date()`"
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Tidyverse
+library(tidyverse)  # data handling and plotting
+library(rvest)      # scrape data
+
+
+# Interactive elements
+library(leaflet)    # interactive maps
+library(DT)         # interactive tables
+library(plotly)     # interactive plots
+
+library(rvest)
+library(htmltools)
+
+#team logos
+#install.packages("teamcolors")
+library(teamcolors)
+library(gtable)
+library(gtExtras)
+library(shiny)
+```
+
+## Scrape Data from Wiki table
+
+```{r}
+nba_scrape <-
+  read_html("https://en.wikipedia.org/wiki/National_Basketball_Association") %>% 
+  html_nodes(xpath = "/html/body/div[2]/div/div[3]/main/div[3]/div[3]/div[1]/table[4]") %>%
+  html_table(fill = TRUE, header = NA) %>%
+  .[[1]]  # list was returned, so extract first list element
+
+glimpse(nba_scrape)  # a data frame
+
+```
+
+## Wrangle up the data
+
+```{r}
+
+nba_wrangle <- nba_scrape %>% 
+  select(-length(.)) %>%  # remove the last column (NA)
+  dplyr::filter(!str_detect(Division, "Conference")) %>% 
+  mutate(
+    Conference = c(rep("Eastern", 15), rep("Western", 15)),
+    Capacity = as.numeric(str_remove(Capacity, ","))
+  ) %>% 
+  separate(`Location`, c("City", "State"), sep = ", ") %>% 
+  separate(Coordinates, c("Coords1", "Coords2", "Coords3"), " / ") %>% 
+  separate(Coords3, c("Latitude", "Longitude"), sep = "; ") %>% 
+  separate(Longitude, c("Longitude", "X"), sep = " \\(") %>% 
+  mutate(
+    Latitude = as.numeric(Latitude),
+    Longitude = as.numeric(
+      str_remove(Longitude, "\\ufeff")  # remove rogue unicode
+    )  
+  ) %>% 
+  select(
+    Team, Conference, everything(),
+    -Founded, -Joined, -Coords1, -Coords2, -X
+  ) %>% 
+  as_tibble()  # convert to tibble
+
+glimpse(nba_wrangle)
+
+
+```
+
+## Merge abreveation/ color for teams
+
+```{r}
+nba_abbr_cols <- 
+  read_html(
+    "https://en.wikipedia.org/wiki/Wikipedia:WikiProject_National_Basketball_Association/National_Basketball_Association_team_abbreviations"
+  ) %>% 
+  html_nodes(xpath = "/html/body/div[2]/div/div[3]/main/div[3]/div[3]/div[1]/table") %>%
+  html_table(header = TRUE) %>%
+  .[[1]] %>% 
+  rename(Code = `Abbreviation/Acronym`) %>% 
+  mutate(
+    # {leaflet} markers take a named colour
+    colour_marker = case_when(
+      Code == "ATL" ~ "red",
+      Code == "BKN" ~ "black",
+      Code == "BOS" ~ "green",
+      Code == "CHA" ~ "darkblue",
+      Code == "CHI" ~ "red",
+      Code == "CLE" ~ "darkred",
+      Code == "DAL" ~ "blue",
+      Code == "DEN" ~ "darkblue",
+      Code == "DET" ~ "red",
+      Code == "GSW" ~ "blue",
+      Code == "HOU" ~ "red",
+      Code == "IND" ~ "darkblue",
+      Code == "LAC" ~ "red",
+      Code == "LAL" ~ "blue",
+      Code == "MEM" ~ "lightblue",
+      Code == "MIA" ~ "red",
+      Code == "MIL" ~ "darkgreen",
+      Code == "MIN" ~ "darkblue",
+      Code == "NOP" ~ "darkblue",
+      Code == "NYK" ~ "blue",
+      Code == "OKC" ~ "blue",
+      Code == "ORL" ~ "blue",
+      Code == "PHI" ~ "blue",
+      Code == "PHX" ~ "darkblue",
+      Code == "POR" ~ "red",
+      Code == "SAC" ~ "purple",
+      Code == "SAS" ~ "black",
+      Code == "TOR" ~ "red",
+      Code == "UTA" ~ "darkblue",
+      Code == "WAS" ~ "darkblue"
+    ),
+    # {leaflet} marker icons take hex
+    colour_icon = case_when(
+      Code == "ATL" ~ "#C1D32F",
+      Code == "BKN" ~ "#FFFFFF",
+      Code == "BOS" ~ "#BA9653",
+      Code == "CHA" ~ "#00788C",
+      Code == "CHI" ~ "#000000",
+      Code == "CLE" ~ "#FDBB30",
+      Code == "DAL" ~ "#B8C4CA",
+      Code == "DEN" ~ "#FEC524",
+      Code == "DET" ~ "#1D42BA",
+      Code == "GSW" ~ "#FFC72C",
+      Code == "HOU" ~ "#000000",
+      Code == "IND" ~ "#FDBB30",
+      Code == "LAC" ~ "#1D428A",
+      Code == "LAL" ~ "#FDB927",
+      Code == "MEM" ~ "#12173F",
+      Code == "MIA" ~ "#F9A01B",
+      Code == "MIL" ~ "#EEE1C6",
+      Code == "MIN" ~ "#9EA2A2",
+      Code == "NOP" ~ "#C8102E",
+      Code == "NYK" ~ "#F58426",
+      Code == "OKC" ~ "#EF3B24",
+      Code == "ORL" ~ "#C4CED4",
+      Code == "PHI" ~ "#ED174C",
+      Code == "PHX" ~ "#E56020",
+      Code == "POR" ~ "#000000",
+      Code == "SAC" ~ "#63727A",
+      Code == "SAS" ~ "#C4CED4",
+      Code == "TOR" ~ "#000000",
+      Code == "UTA" ~ "#F9A01B",
+      Code == "WAS" ~ "#E31837"
+    )
+  ) %>% 
+  as_tibble()
+
+sample_n(nba_abbr_cols, 5)
+
+
+
+```
+
+## combine tables
+
+```{r}
+nba_table <- nba_wrangle %>% 
+  left_join(nba_abbr_cols, by = c("Team" = "Franchise")) %>%
+  select(Code, everything())
+
+glimpse(nba_table)
+
+logos <- teamcolors%>%
+  filter(league == "nba")%>%
+  select(name,logo)
+  
+  
+nba_logos <- merge(nba_table,logos, by.x = "Team" , by.y = "name" )
+
+names(logos)
+names(nba_table)
+
+nba_logos
+  
+
+```
+
+```{r}
+
+leaflet(nba_logos) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%  # add basemap
+  addAwesomeMarkers(  # add markers
+    lng = ~Longitude, lat = ~Latitude, label = ~htmlEscape(Team),  # coordinates
+    popup = ~paste0(  # HTML content for popup info
+      "<b>", nba_logos$Team, "</b>",  # team name
+      "<br>", paste0(nba_logos$Arena, ", ", nba_logos$City),  # location
+      if_else(  # division/conference information
+        nba_logos$Conference == "Eastern",
+        paste0("<br><font color='#0000FF'>", nba_logos$Division,
+               " Division (Eastern Conference)</font>"),
+        paste0("<br><font color='#FF0000'>", nba_logos$Division,
+               " Division (Western Conference)</font>")
+      )
+    ),
+    icon = awesomeIcons(
+      library = "ion", icon = "ion-ios-basketball", # add basketball icon
+      markerColor = nba_logos$colour_marker,  # colour the marker
+      iconColor = nba_logos$colour_icon  # colour the basketball icon
+    )
+  )
+
+
+```
+
+# Oh the combinations of data tables
+
+```{r}
+library(lubridate)
+
+fullnba<-read_csv('Seasons_Stats.csv')
+#remove all * from the Player column
+fullnba$Player<- gsub("[*]", "", fullnba$Player)
+
+
+fullnba <- fullnba%>%
+  mutate(id = as.numeric(factor(Tm)))
+
+table(fullnba$Tm,fullnba$id)
+
+
+Team_table <- nba_logos%>%
+   mutate(id = row_number())%>%
+  relocate(.,logo,.before = Team)
+
+comnba <-  merge(fullnba,Team_table, by.x = "id" , by.y = "id" )%>%
+  select(-Code,- ...1)%>%
+  relocate(., Year,Team, Player, Age, Pos,.after = id)
+
+```
+
+
+
+
+
