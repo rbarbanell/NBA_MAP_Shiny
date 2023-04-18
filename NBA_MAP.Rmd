@@ -15,8 +15,7 @@ library(rvest)      # scrape data
 
 # Interactive elements
 library(leaflet)    # interactive maps
-library(DT)         # interactive tables
-library(plotly)     # interactive plots
+
 
 library(rvest)
 library(htmltools)
@@ -24,8 +23,7 @@ library(htmltools)
 #team logos
 #install.packages("teamcolors")
 library(teamcolors)
-library(gtable)
-library(gtExtras)
+
 library(shiny)
 ```
 
